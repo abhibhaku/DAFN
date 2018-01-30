@@ -18,3 +18,12 @@
 14. Add to the shiny app a feature that lets you select which columns of the data set to display. 
 
 (Turn in the entire HW in a single file, including screen shots if required.)
+
+## HW for Lectures 7 and 8: Text Analytics and Networks
+
+1. Pick any stock you are interested in. Download using Twitter the last 100 (or max allowed) tweets that contain the hashtag for this stock and store the tweets in a dataframe.
+2. Get the text of all tweets and treat each tweet as a document. Clean off all unwanted characters. Then make the Term Document Matrix.
+3. Assuming each document is a node in a network, create the adjacency matrix of documents where two documents are connected if they share at least one word. Plot the adjacency matrix using a contour plot.
+4. Plot the document network. Comment.
+5. Plot the words (terms) network. Comment. 
+
