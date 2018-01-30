@@ -1,0 +1,444 @@
+---
+title: "In the Same Boat: Cluster Analysis and Prediction Trees"
+author: "Sanjiv Das"
+output: slidy_presentation
+---
+
+## Overview
+
+There are many aspects of data analysis that call for grouping individuals, firms, projects, etc. These fall under the rubric of what may be termed as **classification** analysis. Cluster analysis comprises a group of techniques that uses distance metrics to bunch data into categories. 
+
+There are two broad approaches to cluster analysis:
+
+1. Agglomerative or Hierarchical or Bottom-up: In this case we begin with all entities in the analysis being given their own cluster, so that we start with $n$ clusters. Then, entities are grouped into clusters based on a given distance metric between each pair of entities. In this way a **hierarchy** of clusters is built up and the researcher can choose which grouping is preferred. 
+
+2. Partitioning or Top-down: In this approach, the entire set of $n$ entities is assumed to be a cluster. Then it is progressively partitioned into smaller and smaller clusters. 
+
+We will employ both clustering approaches and examine their properties with various data sets as examples. 
+
+## k-MEANS
+
+This approach is bottom-up. If we have a sample of $n$ observations to be allocated to $k$ clusters, then we can initialize the clusters in many ways. One approach is to assume that each observation is a cluster unto itself. We proceed by taking each observation and allocating it to the nearest cluster using a distance metric. At the outset, we would simply allocate an observation to its nearest neighbor. 
+
+How is nearness measured? We need a distance metric, and one common one is Euclidian distance. Suppose we have two observations $x_i$ and $x_j$. These may be represented by a vector of attributes. Suppose our observations are people, and the attributes are \{height, weight, IQ\} = $x_i = \{h_i, w_i, I_i\}$ for the $i$-th individual. Then the Euclidian distance between two individuals $i$ and $j$ is
+
+$$
+d_{ij} = \sqrt{(h_i-h_j)^2 + (w_i-w_j)^2 + (I_i - I_j)^2}
+$$
+
+It is usually computed using normalized variables, so that no single variable of large size dominates the distance calculation. (Normalization is the process of subtracting the mean from each observation and then dividing by the standard deviation.)
+
+In contrast, the "Manhattan" distance is given by (when is this more appropriate?)
+
+$$
+d_{ij} = |h_i-h_j| + |w_i-w_j| + |I_i - I_j|
+$$
+
+We may use other metrics such as the cosine distance, or the Mahalanobis distance. A matrix of $n \times n$ values of all $d_{ij}$s is called the **distance matrix**. Using this distance metric we assign nodes to clusters or attach them to nearest neighbors. After a few iterations, no longer are clusters made up of singleton observations, and the number of clusters reaches $k$, the preset number required, and then all nodes are assigned to one of these $k$ clusters. As we examine each observation we then assign it (or re-assign it) to the nearest cluster, where the distance is measured from the observation to some representative node of the cluster. Some common choices of the representative node in a cluster of are:
+
+1. Centroid of the cluster. This is the mean of the observations in the cluster for each attribute. The centroid of the two observations above is the average vector $\{(h_i+h_j)/2, (w_i+w_j)/2, (I_i + I_j)/2\}$. This is often called the **center** of the cluster. If there are more nodes then the centroid is the average of the same coordinate for all nodes. 
+2. Closest member of the cluster. 
+3. Furthest member of the cluster.  
+
+The algorithm converges when no re-assignments of observations to clusters occurs. Note that $k$-means is a random algorithm, and may not always return the same clusters every time the algorithm is run. Also, one needs to specify the number of clusters to begin with and there may be no a-priori way in which to ascertain the correct number. Hence, trial and error and examination of the results is called for. Also, the algorithm aims to have balanced clusters, but this may not always be appropriate. 
+
+In R, we may construct the distance matrix using the **dist** function. Using the NCAA data we are already familiar with, we have: 
+
+```{r}
+ncaa = read.table("DSTMAA_data/ncaa.txt",header=TRUE)
+print(names(ncaa))
+d = dist(ncaa[,3:14], method="euclidian")
+print(head(d))
+```
+
+Examining this matrix will show that it contains $n(n-1)/2$ elements, i.e., the number of pairs of nodes. Only the lower triangular matrix of $d$ is populated. 
+
+Clustering takes many observations with their characteristics and then allocates them into buckets or clusters based on their similarity. In finance, we may use cluster analysis to determine groups of similar firms. 
+
+Unlike regression analysis, cluster analysis uses only the right-hand side variables, and there is no dependent variable required. We group observations purely on their overall similarity across characteristics. Hence, it is closely linked to the notion of **communities** that we studied in network analysis, though that concept lives primarily in the domain of networks. 
+
+## Example: Randomly generated data in k-means
+
+Here we use the example from the **kmeans** function to see how the clusters appear. This function is standard issue, i.e., it comes with the **stats** package, which is included in the base R distribution and does not need to be separately installed. The data is randomly generated but has two bunches of items with different means, so we should be easily able to see two separate clusters. You will need the **graphics** package which is also in the base installation. 
+
+```{r}
+# a 2-dimensional example
+x <- rbind(matrix(rnorm(100, sd = 0.3), ncol = 2),
+           matrix(rnorm(100, mean = 1, sd = 0.3), ncol = 2))
+colnames(x) <- c("x", "y")
+(cl <- kmeans(x, 2))
+```
+
+```{r}
+#PLOTTING CLUSTERS
+print(names(cl))
+plot(x, col = cl$cluster)
+points(cl$centers, col = 1:2, pch = 8, cex=4)
+```
+
+```{r}
+#REDO ANALYSIS WITH 5 CLUSTERS
+## random starts do help here with too many clusters
+(cl <- kmeans(x, 5, nstart = 25))
+```
+
+```{r}
+plot(x, col = cl$cluster)
+points(cl$centers, col = 1:5, pch = 8)
+```
+
+## Example: NCAA teams
+
+We revisit our NCAA data set, and form clusters there. 
+
+```{r}
+ncaa = read.table("DSTMAA_data/ncaa.txt",header=TRUE)
+print(names(ncaa))
+fit = kmeans(ncaa[,3:14],4)
+print(fit$size)
+print(fit$centers)
+```
+
+```{r}
+#Since there are more than two attributes of each observation in the data, 
+#we picked two of them {AST, PTS} and plotted the clusters against those. 
+idx = c(4,6)
+plot(ncaa[,idx],col=fit$cluster)
+```
+
+## Hierarchical Clustering
+
+Hierarchical clustering is both, a top-down (divisive) approach and bottom-up (agglomerative) approach. At the top level there is just one cluster. A level below, this may be broken down into a few clusters, which are then further broken down into more sub-clusters a level below, and so on. This clustering approach is computationally expensive, and the divisive approach is exponentially expensive in $n$, the number of entities being clustered. In fact, the algorithm is ${\cal O}(2^n)$. 
+
+The function for clustering is **hclust** and is included in the **stats** package in the base R distribution. 
+
+We begin by first computing the distance matrix. Then we call the **hclust** function and the **plot** function applied to object **fit** gives what is known as a **dendrogram** plot, showing the cluster hierarchy. We may pick clusters at any level. In this case, we chose a **cut** level such that we get four clusters, and the **rect.hclust** function allows us to superimpose boxes on the clusters so we can see the grouping more clearly.  The result is plotted in the Figure below.
+
+```{r}
+d = dist(ncaa[,3:14], method="euclidian")
+fit = hclust(d, method="ward")
+names(fit)
+```
+
+```{r}
+plot(fit,main="NCAA Teams")
+groups = cutree(fit, k=3)
+rect.hclust(fit, k=3, border="blue")
+```
+
+We can also visualize the clusters loaded on to the top two principal components as follows, using the **clusplot** function that resides in package **cluster**. The result is plotted in the Figure below.
+
+```{r}
+print(groups)
+library(cluster)
+clusplot(ncaa[,3:14],groups,color=TRUE,shade=TRUE,labels=2,lines=0)
+```
+
+```{r}
+#Using the correlation matrix as a proxy for distance
+x = t(as.matrix(ncaa[,3:14]))
+d = as.dist((1-cor(x))/2)
+fit = hclust(d, method="ward")
+plot(fit,main="NCAA Teams")
+groups = cutree(fit, k=3)
+rect.hclust(fit, k=3, border="red")
+```
+
+```{r}
+print(groups)
+library(cluster)
+clusplot(ncaa[,3:14],groups,color=TRUE,shade=TRUE,labels=2,lines=0)
+```
+
+## k Nearest Neighbors
+
+This is one of the simplest algorithms for classification and grouping. Simply define a distance metric over a set of observations, each with $M$ characteristics, i.e., $x_1, x_2,..., x_M$. Compute the pairwise distance between each pair of observations, using any of the metrics above. 
+
+Next, fix $k$, the number of nearest neighbors in the population to be considered. Finally, assign the category based on which one has the majority of nearest neighbors to the case we are trying to classify. 
+
+We see an example in R using the **iris** data set that we examined before. 
+
+```{r}
+library(class)
+data(iris)
+print(head(iris))
+
+#SAMPLE A SUBSET
+idx = seq(1,length(iris[,1]))
+train_idx = sample(idx,100)
+test_idx = setdiff(idx,train_idx)
+x_train = iris[train_idx,1:4]
+x_test = iris[test_idx,1:4]
+y_train = iris[train_idx,5]
+y_test = iris[test_idx,5]
+
+#RUN knn
+res = knn(x_train, x_test, y_train, k = 3, prob = FALSE, use.all = TRUE)
+res
+```
+
+```{r}
+table(res,y_test)
+```
+
+## Prediction Trees
+
+Prediction trees are a natural outcome of recursive partitioning of the data. Hence, they are a particular form of clustering at different levels. Usual cluster analysis results in a **flat** partition, but prediction trees develop a multi-level cluster of trees. The term used here is CART, which stands for classification analysis and regression trees. But prediction trees are different from vanilla clustering in an important way -- there is a dependent variable, i.e., a category or a range of values (e.g., a score) that one is attempting to predict. 
+
+Prediction trees are of two types: (a) Classification trees, where the leaves of the trees are different categories of discrete outcomes. and (b) Regression trees, where the leaves are continuous outcomes. We may think of the former as a generalized form of limited dependent variables, and the latter as a generalized form of regression analysis. 
+
+To set ideas, suppose we want to predict the credit score of an individual using age, income, and education as explanatory variables. Assume that income is the best explanatory variable of the three. Then, at the top of the tree, there will be income as the branching variable, i.e., if income is less than some threshold, then we go down the left branch of the tree, else we go down the right. At the next level, it may be that we use education to make the next bifurcation, and then at the third level we use age. A variable may even be repeatedly used at more than one level. This leads us to several leaves at the bottom of the tree that contain the average values of the credit scores that may be reached. For example if we get an individual of young age, low income, and no education, it is very likely that this path down the tree will lead to a low credit score on average. Instead of credit score (an example of a regression tree), consider credit ratings of companies (an example of a classification tree). These ideas will become clearer once we present some examples. 
+
+## Fitting the tree
+
+Recursive partitioning is the main algorithmic construct behind prediction trees. We take the data and using a single explanatory variable, we try and bifurcate the data into two categories such that the additional information from categorization results in better **information** than before the binary split. For example, suppose we are trying to predict who will make donations and who will not using a single variable -- income. If we have a sample of people and have not yet analyzed their incomes, we only have the raw frequency $p$ of how many people made donations, i.e., and number between 0 and 1. The **information** of the predicted likelihood $p$ is inversely related to the sum of squared errors (SSE) between this value $p$ and the 0 values and 1 values of the observations. 
+
+$$
+SSE_1 = \sum_{i=1}^n (x_i - p)^2
+$$
+
+where $x_i = \{0,1\}$, depending on whether person $i$ made a donation or not. Now, if we bifurcate the sample based on income, say to the left we have people with income less than $K$, and to the right, people with incomes greater than or equal to $K$. If we find that the proportion of people on the left making donations is $p_L < p$ and on the right is $p_R > p$, our new information is:
+
+$$
+SSE_2 = \sum_{i, Income < K} (x_i - p_L)^2 + \sum_{i, Income \geq K} (x_i - p_R)^2
+$$
+
+By choosing $K$ correctly, our recursive partitioning algorithm will maximize the gain, i.e., $\delta = (SSE_1 - SSE_2)$. We stop branching further when at a given tree level $\delta$ is less than a pre-specified threshold. 
+
+We note that as $n$ gets large, the computation of binary splits on any variable is expensive, i.e., of order ${\cal O}(2^n)$. But as we go down the tree, and use smaller subsamples, the algorithm becomes faster and faster. In general, this is quite an efficient algorithm to implement. 
+
+The motivation of prediction trees is to emulate a decision tree. It also helps make sense of complicated regression scenarios where there are lots of variable interactions over many variables, when it becomes difficult to interpret the meaning and importance of explanatory variables in a prediction scenario. By proceeding in a hierarchical manner on a tree, the decision analysis becomes transparent, and can also be used in practical settings to make decisions. 
+
+## Classification Trees
+
+To demonstrate this, let's use a data set that is already in R. We use the **kyphosis** data set which contains data on children who have had spinal surgery. The model we wish to fit is to predict whether a child has a post-operative deformity or not (variable: Kyphosis = {absent, present}). The variables we use are Age in months, number of vertebrae operated on (Number), and the beginning of the range of vertebrae operated on (Start). The package used is called **rpart** which stands for **recursive partitioning**. 
+
+```{r}
+library(rpart)
+data(kyphosis)
+head(kyphosis)
+```
+
+```{r}
+fit = rpart(Kyphosis~Age+Number+Start, method="class", data=kyphosis)
+printcp(fit)
+summary(kyphosis)
+```
+
+```{r}
+summary(fit)
+```
+
+We can plot the tree as well using the **plot** command. The dendrogram like tree shows the allocation of the $n=81$ cases to various branches of the tree. 
+
+```{r}
+plot(fit, uniform=TRUE)
+text(fit, use.n=TRUE, all=TRUE, cex=0.8)
+```
+
+## C4.5 Classifier
+
+This classifier also follows recursive partitioning as in the previous case, but instead of minimizing the sum of squared errors between the sample data $x$ and the true value $p$ at each level, here the goal is to minimize entropy. This improves the information gain. Natural entropy ($H$) of the data $x$ is defined as 
+
+$$
+H = -\sum_x\;  f(x) \cdot ln \;f(x)
+$$
+
+where $f(x)$ is the probability density of $x$. This is intuitive because after the optimal split in recursing down the tree, the distribution of $x$ becomes narrower, lowering entropy. This measure is also often known as ``differential entropy.''
+
+To see this let's do a quick example. We compute entropy for two distributions of varying spread (standard deviation). 
+
+```{r}
+dx = 0.001
+x = seq(-5,5,dx)
+H2 = -sum(dnorm(x,sd=2)*log(dnorm(x,sd=2))*dx)
+print(H2)
+H3 = -sum(dnorm(x,sd=3)*log(dnorm(x,sd=3))*dx)
+print(H3)
+```
+
+Therefore, we see that entropy increases as the normal distribution becomes wider. 
+
+```{r,eval=FALSE}
+library(RWeka)
+data(iris)
+print(head(iris))
+res = J48(Species~.,data=iris)
+print(res)
+summary(res)
+```
+
+## Regression Trees
+
+We move from classification trees (discrete outcomes) to regression trees (scored or continuous outcomes). Again, we use an example that already exists in R, i.e., the *cars* dataset in the **cu.summary** data frame. Let's load it up. 
+
+```{r}
+data(cu.summary)
+print(names(cu.summary))
+print(head(cu.summary))
+print(tail(cu.summary))
+print(dim(cu.summary))
+print(unique(cu.summary$Type))
+print(unique(cu.summary$Country))
+```
+
+We will try and predict Mileage using the other variables. (Note: if we tried to predict Reliability, then we would be back in the realm of classification trees, here we are looking at regression trees.)
+
+```{r}
+library(rpart)
+fit <- rpart(Mileage~Price + Country + Reliability + Type, method="anova", data=cu.summary)
+print(summary(fit))
+```
+
+```{r}
+plot(fit, uniform=TRUE)
+text(fit, use.n=TRUE, all=TRUE, cex=.8)
+```
+
+## Example: Califonia Home Data
+
+This example is taken from a data set posted by Cosmo Shalizi at CMU. We use a different package here, called **tree**, though this has been subsumed in most of its functionality by **rpart** used earlier. The analysis is as follows:
+
+```{r}
+library(tree)
+cahomes = read.table("DSTMAA_data/cahomedata.txt",header=TRUE)
+print(dim(cahomes))
+head(cahomes)
+```
+
+```{r}
+summary(cahomes)
+mhv = as.matrix(as.numeric(cahomes$MedianHouseValue))
+logmhv = log(mhv)
+lat = as.matrix(as.numeric(cahomes$Latitude))
+lon = as.matrix(as.numeric(cahomes$Longitude))
+summary(lm(mhv~lat+lon))
+```
+
+```{r}
+fit = tree(logmhv~lon+lat)
+plot(fit)
+text(fit,cex=0.8)
+```
+
+```{r}
+price.deciles = quantile(mhv,0:10/10)
+
+cut.prices = cut(mhv,price.deciles,include.lowest=TRUE)
+plot(lon, lat, col=grey(10:2/11)[cut.prices],pch=20,xlab="Longitude",ylab="Latitude")
+partition.tree(fit,ordvars=c("lon","lat"),add=TRUE,cex=0.8)
+```
+
+## Random Forests
+
+A random forest model is an extension of the CART class of models. In CART, at each decision node, all variables in the feature set are selected and the best one is determined for the bifurcation rule at that node. This approach tends to overfit the model to training data. 
+
+To ameliorate overfitting Breiman (2001) suggested generating classification and regression trees using a random subset of the feature set at each. One at a time, a random tree is grown. By building a large set of random trees (the default number in R is 500), we get a "random forest" of decision trees, and when the algorithm is run, each tree in the forest classifies the input. The output classification is determined by taking the modal classification across all trees. 
+
+The default number of variables from a feature set of $p$ variables is defaulted to $p/3$, rounded down, for a regression tree, and $\sqrt{p}$ for a classification tree. 
+
+**Reference**: @Breiman:2001:RF:570181.570182
+
+For the NCAA data, take the top 32 teams and make their dependent variable 1, and that of the bottom 32 teams zero. 
+
+```{r}
+ncaa = read.table("DSTMAA_data/ncaa.txt",header=TRUE)
+
+y1 = 1:32
+y1 = y1*0+1
+y2 = y1*0
+y = c(y1,y2)
+print(y)
+x = as.matrix(ncaa[4:14])
+```
+
+```{r}
+library(randomForest)
+yf = factor(y)
+res = randomForest(x,yf)
+print(res)
+print(importance(res))
+```
+
+```{r}
+res = randomForest(x,yf,mtry=3)
+print(res)
+print(importance(res))
+```
+
+## Top Ten Algorithms in Data Science
+
+The top voted algorithms in machine learning are: C4.5, k-means, SVM, Apriori, EM, PageRank, AdaBoost, kNN, Naive Bayes, CART. (This is just from one source, and differences of opinion will remain.)
+
+## Boosting
+
+Boosting is an immensely popular machine learning technique. It is an iterative approach that takes weak learning algorithms and "boosts" them into strong learners. The method is intuitive. Start out with a classification algorithm such as logit for binary classification and run one pass to fit the model. Check which cases are correctly predicted in-sample, and which are incorrect. In the next classification pass (also known as a round), reweight the misclassified observations versus the correctly classified ones, by overweighting the former, and underweighting the latter. This forces the learner to "focus" more on the tougher cases, and adjust so that it gets these classified more accurately. Through multiple rounds, the results are boosted to higher levels of accuracy. Because there are many different weighting schemes, data scientists have evolved many different boosting algorithms. AdaBoost is one such popular algorithm, developed by @Schapire99improvedboosting. 
+
+In recent times, these boosting algorithms have improved in their computer implementation, mostly through parallelization to speed them up when using huge data sets. Such versions are known as "extreme gradient" boosting algorithms. In R, the package **xgboost** contains an easy to use implementation. We illustrate with an example. 
+
+We use the sample data that comes with the **xgboost** package. Read in the data for the model. 
+
+```{r}
+library(xgboost)
+
+data("agaricus.train")
+print(names(agaricus.train))
+print(dim(agaricus.train$data))
+print(length(agaricus.train$label))
+
+data("agaricus.test")
+print(names(agaricus.test))
+print(dim(agaricus.test$data))
+print(length(agaricus.test$label))
+```
+
+Fit the model. All that is needed is a single-line call to the *xgboost* function. 
+
+```{r}
+res = xgboost(data=agaricus.train$data, label=agaricus.train$label, objective = "binary:logistic", nrounds=5)
+print(names(res))
+```
+
+Undertake prediction using the *predict* function and then examine the confusion matrix for performance. 
+
+```{r}
+#In sample
+yhat = predict(res,agaricus.train$data)
+print(head(yhat,50))
+cm = table(agaricus.train$label,as.integer(round(yhat)))
+print(cm)
+print(chisq.test(cm))
+
+#Out of sample
+yhat = predict(res,agaricus.test$data)
+print(head(yhat,50))
+cm = table(agaricus.test$label,as.integer(round(yhat)))
+print(cm)
+print(chisq.test(cm))
+```
+
+There are many types of algorithms that may be used with boosting, see the documentation of the function in R. But here are some of the options. 
+
+- reg:linear, linear regression (Default).
+- reg:logistic, logistic regression.
+- binary:logistic, logistic regression for binary classification. Output probability.
+- binary:logitraw, logistic regression for binary classification, output score before logistic transformation.
+- multi:softmax, set xgboost to do multiclass classification using the softmax objective. Class is represented by a number and should be from 0 to num_class - 1.
+- multi:softprob, same as softmax, but prediction outputs a vector of ndata * nclass elements, which can be further reshaped to ndata, nclass matrix. The result contains predicted probabilities of each data point belonging to each class.
+- rank:pairwise set xgboost to do ranking task by minimizing the pairwise loss.
+
+Let's repeat the exercise using the NCAA data. 
+
+```{r}
+ncaa = read.table("DSTMAA_data/ncaa.txt",header=TRUE)
+y = as.matrix(c(rep(1,32),rep(0,32)))
+x = as.matrix(ncaa[4:14])
+res = xgboost(data=x,label=y,objective = "binary:logistic", nrounds=10)
+
+yhat = predict(res,x)
+print(yhat)
+cm = table(y,as.integer(round(yhat)))
+print(cm)
+print(chisq.test(cm))
+```
+

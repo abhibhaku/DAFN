@@ -1,0 +1,532 @@
+---
+title: "Extracting Dimensions: Discriminant and Factor Analysis"
+output: slidy_presentation
+---
+
+## Introduction
+
+In discriminant analysis (DA), we develop statistical models that differentiate two or more population types, such as immigrants vs natives, males vs females, etc. In factor analysis (FA), we attempt to collapse an enormous amount of data about the population into a few common explanatory variables. DA is an attempt to explain categorical data, and FA is an attempt to reduce the dimensionality of the data that we use to explain both categorical or continuous data. They are distinct techniques, related in that they both exploit the techniques of linear algebra.
+
+## Discriminant Analysis
+
+In DA, what we are trying to explain is very often a dichotomous split of our observations. For example, if we are trying to understand what determines a good versus a bad creditor. We call the good vs bad the "criterion" variable, or the "dependent" variable. The variables we use to explain the split between the criterion variables are called "predictor" or "explanatory" variables. We may think of the criterion variables as left-hand side variables or dependent variables in the lingo of regression analysis. Likewise, the explanatory variables are the right-hand side ones. 
+
+What distinguishes DA is that the left-hand side (lhs) variables are essentially **qualitative** in nature. They have some underlying numerical value, but are in essence qualitative. For example, when universities go through the admission process, they may have a cut off score for admission. This cut off score discriminates the students that they want to admit and the ones that they wish to reject. DA is a very useful tool for determining this cut off score. 
+
+In short, DA is the means by which quantitative explanatory variables are used to explain qualitative criterion variables. The number of qualitative categories need not be restricted to just two. DA encompasses a larger number of categories too. 
+
+## Notation and assumptions
+
+- Assume that there are $N$ categories or groups indexed by $i=2...N$. 
+- Within each group there are observations $y_j$, indexed by $j=1...M_i$. The size of each group need not be the same, i.e., it is possible that $M_i \neq M_j$. 
+- There are a set of predictor variables $x = [x_1,x_2,\ldots,x_K]'$. Clearly, there must be good reasons for choosing these so as to explain the groups in which the $y_j$ reside. Hence the value of the $k$th variable for group $i$, observation $j$, is denoted as $x_{ijk}$. 
+- Observations are mutually exclusive, i.e., each object can only belong to any one of the groups.
+- The $K \times K$ covariance matrix of explanatory variables is assumed to be the same for all groups, i.e., $Cov(x_i) = Cov(x_j)$. This is the homoskedasticity assumption, and makes the criterion for choosing one class over the other a simple projection on the $z$ axis where it may be compared to a cut off. 
+
+## Discriminant Function
+
+DA involves finding a discriminant function $D$ that best classifies the observations into the chosen groups. The function may be nonlinear, but the most common approach is to use linear DA. The function takes the following form:
+
+\begin{equation}
+D = a_1 x_1 + a_2 x_2 + \ldots + a_K x_K = \sum_{k=1}^K a_k x_k
+\end{equation}
+
+where the $a_k$ coefficients are discriminant weights. 
+
+The analysis requires the inclusion of a cut-off score $C$. For example, if $N=2$, i.e., there are 2 groups, then if $D>C$ the observation falls into group 1, and if $D \leq C$, then the observation falls into group 2. 
+
+Hence, the *objective* function is to choose $\{\{a_k\}, C\}$ such that classification error is minimized. The equation $C=D(\{x_k\}; \{a_k\})$ is the equation of a hyperplane that cuts the space of the observations into 2 parts if there are only two groups. Note that if there are $N$ groups then there will be $(N-1)$ cutoffs $\{C_1,C_2,\ldots,C_{N-1}\}$, and a corresponding number of hyperplanes. 
+
+The variables $x_k$ are also known as the "discriminants". In the extraction of the discriminant function, better discriminants will have higher statistical significance. 
+
+## How good is the discriminant function?
+
+After fitting the discriminant function, the next question to ask is how good the fit is. There are various measures that have been suggested for this. All of them have the essential property that they best separate the distribution of observations for different groups. There are many such measures: (a) Point biserial correlation, (b) Mahalobis $D_M$, (c) Wilks' $\lambda$, (d) Rao's $V$, and (e) the confusion matrix. Each of the measures assesses the degree of classification error. 
+
+- The point biserial correlation is the $R^2$ of a regression in which the classified observations are signed as $y_{ij}=1, i=1$ for group 1 and $y_{ij}=0, i=2$ for group 2, and the rhs variables are the $x_{ijk}$ values. 
+
+- The Mahalanobis distance between any two characteristic vectors for two entities in the data is given by 
+\begin{equation}
+D_M = \sqrt{({\bf x}_1 - {\bf x}_2)' {\bf \Sigma}^{-1} ({\bf x}_1 - {\bf x}_2)}
+\end{equation}
+where ${\bf x}_1, {\bf x}_2$ are two vectors and ${\bf \Sigma}$ is the covariance matrix of characteristics of all observations in the data set. First, note that if ${\bf \Sigma}$ is the identity matrix, then $D_M$ defaults to the Euclidean distance between two vectors. Second, one of the vectors may be treated as the mean vector for a given category, in which case the Mahalanobis distance can be used to assess the distances within and across groups in a pairwise manner.  The quality of the discriminant function is then gauged by computing the ratio of the average distance across groups to the average distance within groups. Such ratios are often called the Fisher's discriminant value. 
+
+## Confusion Matrix
+
+The confusion matrix is a cross-tabulation of the actual versus predicted classification. For example, a $n$-category model will result in a $n \times n$ confusion matrix. A comparison of this matrix with a matrix where the model is assumed to have no classification ability leads to a $\chi^2$ statistic that informs us about the statistical strength of the classification ability of the model. We will examine this in more detail shortly. 
+
+### Example Using Basketball Data
+
+```{r}
+ncaa = read.table("DSTMAA_data/ncaa.txt",header=TRUE)
+x = as.matrix(ncaa[4:14])
+y1 = 1:32
+y1 = y1*0+1
+y2 = y1*0
+y = c(y1,y2)
+
+library(MASS)
+dm = lda(y~x)
+dm
+```
+
+```{r}
+head(ncaa)
+```
+
+```{r}
+print(names(dm))
+print(dm$scaling)
+print(dm$means)
+```
+
+```{r}
+print(sum(dm$scaling*colMeans(dm$means)))
+print(sum(dm$scaling*dm$means[1,]))
+print(sum(dm$scaling*dm$means[2,]))
+```
+
+```{r}
+y_pred = predict(dm)$class
+print(y_pred)
+```
+
+```{r}
+predict(dm)
+```
+
+```{r}
+out = table(y,y_pred)
+print(out)
+chisq.test(out)
+```
+
+```{r}
+chisq.test(out,correct=FALSE)
+```
+
+```{r}
+ldahist(data = predict(dm)$x[,1], g=predict(dm)$class)
+```
+
+```{r}
+predict(dm)
+```
+
+### Confusion Matrix
+
+This matrix shows some classification ability. Now we ask, what if the model has no classification ability, then what would the average  confusion matrix look like? It's easy to see that this would give a matrix that would assume no relation between the rows and columns, and the numbers in each cell would reflect the average number drawn based on row and column totals. In this case since the row and column totals are all 32, we get the following confusion matrix of no classification ability:
+
+\begin{equation}
+E = \left[
+\begin{array}{cc}
+16 & 16\\
+16 & 16
+\end{array}
+\right]
+\end{equation}
+
+The test statistic is the sum of squared normalized differences in the cells of both matrices, i.e., 
+\begin{equation}
+\mbox{Test-Stat } = \sum_{i,j} \frac{[A_{ij} - E_{ij}]^2}{E_{ij}}
+\end{equation}
+
+We compute this in R.
+
+```{r}
+
+A = matrix(c(27,5,5,27),2,2); print(A)
+E = matrix(c(16,16,16,16),2,2); print(E)
+test_stat = sum((A-E)^2/E); print(test_stat)
+print(1-pchisq(test_stat,1))
+```
+
+## Explanation of LDA
+
+We assume two groups first for simplicity, 1 and 2. Assume a feature space $x \in R^d$. Group 1 has $n_1$ observations, and group 2 has $n_2$ observations, i.e., tuples of dimension $d$. 
+
+We want to find weights $w \in R^d$ that will project each observation in each group onto a point $z$ on a line, i.e., 
+
+\begin{equation}
+z = w_1 x_1 + w_2 x_2 + ... + w_d x_d = w' x
+\end{equation}
+
+We want the $z$ values of group 1 to be as far away as possible from that of group 2, accounting for the variation within and across groups. 
+
+The **scatter** within group $j=1,2$ is defined as: 
+
+\begin{equation}
+S_j = \sum_{i=1}^{n_j} (z_{ji} - \bar{z}_j)^2 = \sum_{i=1}^{n_j} (w' x_{ji} - w'\bar{x}_j)^2
+\end{equation}
+
+where $\bar{z}_j$ is the scalar mean of $z$ values for group $j$, and $\bar{x}_j$ is the mean of $x$ values for group $j$, and is of dimension $d \times 1$. 
+
+We want to capture this scatter more formally, so we define
+
+\begin{eqnarray}
+S_j = w' (x_{ji} - \bar{x}_j)(x_{ji} - \bar{x}_j)' w = w' V_j w
+\end{eqnarray}
+
+where we have defined $V_j = (x_{ji} - \bar{x}_j)(x_{ji} - \bar{x}_j)'$ as the variation within group $j$. We also define total within group variation as $V_w = V_1 + V_2$. Think of $V_j$ as a kind of covariance matrix of group $j$. 
+
+We note that $w$ is dimension $d \times 1$, $(x_{ji} - \bar{x}_j)$ is dimension $d \times n_j$, so that $S_j$ is scalar. 
+
+We sum the within group scatter values to get the total within group variation, i.e., 
+
+\begin{equation}
+w' (V_1 + V_2) w = w' V_w w
+\end{equation}
+
+For between group scatter, we get an analogous expression, i.e., 
+
+\begin{equation}
+w' V_b w = w' (\bar{x}_1 - \bar{x}_2)(\bar{x}_1 - \bar{x}_2)' w
+\end{equation}
+
+where we note that $(\bar{x}_1 - \bar{x}_2)(\bar{x}_1 - \bar{x}_2)'$ is the between group covariance, and $w$ is $(d \times 1)$, $(\bar{x}_1 - \bar{x}_2)$ is dimension $(d \times 1)$.
+
+## Fischer's Discriminant
+
+The Fischer linear discriminant approach is to maximize between group variation and minimize within group variation, i.e., 
+
+\begin{equation}
+F = \frac{w' V_b w}{w' V_w w}
+\end{equation}
+
+Taking the vector derivative w.r.t. $w$ to maximize, we get 
+
+\begin{equation}
+\frac{dF}{dw} = \frac{w' V_w w (2 V_b w) - w' V_b w (2 V_w w)}{(w' V_w w)^2} = {\bf 0}
+\end{equation}
+
+\begin{equation}
+V_b w - \frac{w' V_b w}{w' V_w w} V_w w = {\bf 0}
+\end{equation}
+
+\begin{equation}
+V_b w - F V_w w = {\bf 0}
+\end{equation}
+
+\begin{equation}
+V_w^{-1} V_b w - F w = {\bf 0}
+\end{equation}
+
+Rewrite this is an eigensystem and solve to get 
+
+\begin{eqnarray}
+Aw &=& \lambda w \\
+w^* &=& V_w^{-1}(\bar{x}_1 - \bar{x}_2)
+\end{eqnarray}
+
+where $A = V_w^{-1} V_b$, and $\lambda=F$. 
+
+Note: An easy way to see how to solve for $w^*$ is as follows. First, find the largest eigenvalue of matrix $A$. Second, substitute that into the eigensystem and solve a system of $d$ equations to get $w$. 
+
+
+## Generalizing number of groups
+
+We proceed to $k+1$ groups. Therefore now we need $k$ discriminant vectors, i.e., 
+
+\begin{equation}
+W = [w_1, w_2, ... , w_k] \in R^{d \times k}
+\end{equation}
+
+The Fischer discriminant generalizes to 
+
+\begin{equation}
+F = \frac{|W' V_b W|}{|W' V_w W|} 
+\end{equation}
+
+where we now use the determinant as the numerator and denominator are no longer scalars. Note that between group variation is now $V_w = V_1 + V_2 + ... + V_k$, and the denominator is the determinant of a $(k \times k)$ matrix.
+
+The numerator is also the determinant of a $(k \times k)$ matrix, and 
+
+\begin{equation}
+V_b = \sum_{i=1}^k n_i (x_i - \bar{x}_i)(x_i - \bar{x}_i)' 
+\end{equation}
+
+where $(x_i - \bar{x}_i)$ is of dimension $(d \times n_i)$, so that $V_b$ is dimension $(d \times d)$. 
+
+```{r}
+y1 = rep(3,16)
+y2 = rep(2,16)
+y3 = rep(1,16)
+y4 = rep(0,16)
+y = c(y1,y2,y3,y4)
+res = lda(y~x)
+res
+```
+
+```{r}
+y_pred = predict(res)$class
+print(y_pred)
+print(table(y,y_pred))
+print(chisq.test(table(y,y_pred)))
+```
+
+The idea is that when we have 4 groups, we project each observation in the data into a 3-D space, which is then separated by hyperplanes to demarcate the 4 groups. 
+
+## Eigen Systems
+
+We now move on to understanding some properties of matrices that may be useful in classifying data or deriving its underlying components. We download Treasury interest rate date from the FRED website, http://research.stlouisfed.org/fred2/. I have placed the data in a file called "tryrates.txt". Let's read in the file. 
+
+```{r}
+rates = read.table("DSTMAA_data/tryrates.txt",header=TRUE)
+print(names(rates))
+print(head(rates))
+```
+
+Understanding eigenvalues and eigenvectors is best done visually. An excellent simple exposition is available at: http://setosa.io/ev/eigenvectors-and-eigenvalues/
+
+A $M \times M$ matrix $A$ has attendant $M$ eigenvectors $V$ and eigenvalue $\lambda$ if we can write
+
+\begin{equation}
+\lambda V = A \; V
+\end{equation}
+
+Starting with matrix $A$, the eigenvalue decomposition gives both $V$ and $\lambda$. 
+
+It turns out we can find $M$ such eigenvalues and eigenvectors, as there is no unique solution to this equation. We also require that $\lambda \neq 0$.  
+
+We may implement this in R as follows, setting matrix $A$ equal to the covariance matrix of the rates of different maturities:
+
+```{r}
+A = matrix(c(5,2,1,4),2,2)
+E = eigen(A)
+print(E)
+
+v1 = E$vectors[,1]
+v2 = E$vectors[,2]
+e1 = E$values[1]
+e2 = E$values[2]
+
+print(t(e1*v1))
+print(A %*% v1)
+print(t(e2*v2))
+print(A %*% v2)
+```
+
+
+We see that the origin, eigenvalues and eigenvectors comprise $n$ eigenspaces. The line from the origin through an eigenvector (i.e., a coordinate given by any one eigenvector) is called an "eigenspace". All points on eigenspaces are themselves eigenvectors. These eigenpaces are dimensions in which the relationships between vectors in the matrix $A$ load. 
+
+We may also think of the matrix $A$ as an "operator" or function on vectors/matrices. 
+
+```{r}
+rates = as.matrix(rates[,2:9])
+eigen(cov(rates))
+```
+
+```{r}
+rcorr = cor(rates)
+rcorr
+```
+
+### Intuition
+
+So we calculated the eigenvalues and eigenvectors for the covariance matrix of the data. What does it really mean? Think of the covariance matrix as the summarization of the connections between the rates of different maturities in our data set. What we do not know is how many dimensions of commonality there are in these rates, and what is the relative importance of these dimensions. For each dimension of commonality, we wish to ask (a) how important is that dimension (the eigenvalue), and (b) the relative influence of that dimension on each rate (the values in the eigenvector). The most important dimension is the one with the highest eigenvalue, known as the **principal** eigenvalue, corresponding to which we have the principal eigenvector. It should be clear by now that the eigenvalue and its eigenvector are **eigen pairs**. It should also be intuitive why we call this the **eigenvalue decomposition** of a matrix. 
+
+## Determinants
+
+These functions of a matrix are also difficult to get an intuition for. But its best to think of the determinant as one possible function that returns the "sizing" of a matrix. More specifically, it relates to the volume of the space defined by the matrix. But not exactly, because it can also be negative, though the absolute size will give some sense of volume as well. 
+
+For example, let's take the two-dimensional identity matrix, which defines the unit square. 
+
+```{r}
+a = matrix(0,2,2); diag(a) = 1
+print(det(a))
+print(det(2*a))
+```
+
+We see immediately that when we multiply the matrix by 2, we get a determinant value that is four times the original, because the volume in two-dimensional space is area, and that has changed by 4. To verify, we'll try the three-dimensional identity matrix. 
+
+```{r}
+a = matrix(0,3,3); diag(a) = 1
+print(det(a))
+print(det(2*a))
+```
+
+Now we see that the orginal determinant has grown by $2^3$ when all dimensions are doubled. We may also distort just one dimension, and see what happens. 
+
+```{r}
+a = matrix(0,2,2); diag(a) = 1
+print(det(a))
+a[2,2] = 2
+print(det(a))
+```
+
+That's pretty self-explanatory!
+
+## Dimension Reduction: Factor Analysis and PCA
+
+**Factor analysis** is the use of eigenvalue decomposition to uncover the underlying structure of the data. Given a data set of observations and explanatory variables, factor analysis seeks to achieve a decomposition with these two properties: 
+
+1. Obtain a reduced dimension set of explanatory variables, known as derived/extracted/discovered factors. Factors must be  **orthogonal**, i.e., uncorrelated with each other. 
+
+2. Obtain data reduction, i.e., suggest a limited set of variables. Each such subset is a manifestation of an abstract underlying dimension. 
+
+3. These subsets are ordered in terms of their ability to explain the variation across observations. 
+
+See the article by Richard Darlington: http://www.psych.cornell.edu/Darlington/factor.htm, which is as good as any explanation one can get.  
+
+See also the article by Statsoft: http://www.statsoft.com/textbook/stfacan.html.
+
+### Notation
+
+- Observations: $y_i, i=1...N$.
+- Original explanatory variables: $x_{ik}, k=1...K$. 
+- Factors: $F_j, j=1...M$. 
+- $M < K$.
+
+### The Idea
+
+As you can see in the rates data, there are eight different rates. If we wanted to model the underlying drivers of this system of rates, we could assume a separate driver for each one leading to $K=8$ underlying factors. But the whole idea of factor analysis is to reduce the number of drivers that exist. So we may want to go with a smaller number of $M < K$ factors. 
+
+The main concept here is to **project** the variables $x \in R^{K}$ onto the reduced factor set $F \in R^M$ such that we can explain most of the variables by the factors. Hence we are looking for a relation
+
+\begin{equation}
+x = B F 
+\end{equation}
+
+where $B = \{b_{kj}\}\in R^{K \times M}$ is a matrix of factor **loadings** for the variables. Through matrix $B$, $x$ may be represented in smaller dimension $M$. The entries in matrix $B$ may be positive or negative. Negative loadings mean that the variable is negatively correlated with the factor. The whole idea is that we want to replace the relation of $y$ to $x$ with a relation of $y$ to a reduced set $F$. 
+
+Once we have the set of factors defined, then the $N$ observations $y$ may be expressed in terms of the factors through a factor **score matrix** $A = \{a_{ij}\} \in R^{N \times M}$ as follows:
+
+\begin{equation}
+y = A F
+\end{equation}
+
+Again, factor scores may be positive or negative. There are many ways in which such a transformation from variables to factors might be undertaken. We look at the most common one. 
+
+## Principal Components Analysis (PCA)
+
+In PCA, each component (factor) is viewed as a weighted combination of the other variables (this is not always the way factor analysis is implemented, but is certainly one of the most popular). 
+
+The starting point for PCA is the covariance matrix of the data. Essentially what is involved is an eigenvalue analysis of this matrix to extract the principal eigenvectors. 
+
+We can do the analysis using the R statistical package. Here is the sample session:
+
+```{r}
+ncaa = read.table("DSTMAA_data/ncaa.txt",header=TRUE)
+x = ncaa[4:14]
+print(names(x))
+result = princomp(x)
+summary(result)
+```
+
+```{r}
+screeplot(result)
+screeplot(result,type="lines")
+```
+
+```{r}
+result$loadings
+```
+
+```{r}
+print(names(result))
+result$sdev
+```
+
+```{r}
+biplot(result)
+```
+
+The alternative function **prcomp** returns the same stuff, but gives all the factor loadings immediately. 
+
+```{r}
+prcomp(x)
+```
+
+### Difference between PCA and LDA
+
+<img src="DSTMAA_images/LDAvsPCA.png" height=400 width=700>
+
+### Application to Treasury Yield Curves
+
+We had previously downloaded monthly data for constant maturity yields from June 1976 to December 2006. Here is the 3D plot. It shows the change in the yield curve over time for a range of maturities. 
+
+```{r}
+persp(rates,theta=30,phi=0,xlab="years",ylab="maturity",zlab="rates")
+```
+
+```{r}
+tryrates = read.table("DSTMAA_data/tryrates.txt",header=TRUE)
+rates = as.matrix(tryrates[2:9])
+result = princomp(rates)
+result$loadings
+```
+
+```{r}
+result$sdev
+```
+
+```{r}
+summary(result)
+```
+
+### Results
+
+The results are interesting. We see that the loadings are large in the first three component vectors for all maturity rates. The loadings correspond to a classic feature of the yield curve, i.e., there are three components: level, slope, and curvature. Note that the first component has almost equal loadings for all rates that are all identical in sign. Hence, this is the **level** factor. The second component has negative loadings for the shorter maturity rates and positive loadings for the later maturity ones. Therefore, when this factor moves up, the short rates will go down, and the long rates will go up, resulting in a steepening of the yield curve. If the factor goes down, the yield curve will become flatter. Hence, the second principal component is clearly the **slope** factor. Examining the loadings of the third principal component should make it clear that the effect of this factor is to modulate the **curvature** or hump of the yield curve. Still, from looking at the results, it is clear that 97% of the common variation is explained by just the first factor, and a wee bit more by the next two. The resultant **biplot** shows the dominance of the main component.
+
+```{r}
+biplot(result)
+```
+
+## Difference between PCA and FA
+
+The difference between PCA and FA is that for the purposes of matrix computations PCA assumes that all variance is common, with all unique factors set equal to zero; while FA assumes that there is some unique variance. Hence PCA may also be thought of as a subset of FA. The level of unique variance is dictated by the FA model which is chosen. Accordingly, PCA is a model of a closed system, while FA is a model of an open system. FA tries to decompose the correlation matrix into common and unique portions.
+
+## Factor Rotation
+
+Finally, there are some times when the variables would load better on the factors if the factor system were to be rotated. This called factor rotation, and many times the software does this automatically. 
+
+Remember that we decomposed variables $x$ as follows:
+
+\begin{equation}
+x = B\;F + e
+\end{equation}
+
+where $x$ is dimension $K$, $B \in R^{K \times M}$, $F \in R^{M}$, and $e$ is a $K$-dimension vector. This implies that 
+
+\begin{equation}
+Cov(x) = BB' + \psi
+\end{equation}
+
+Recall that $B$ is the matrix of factor loadings. The system remains unchanged if $B$ is replaced by $BG$, where $G \in R^{M \times M}$, and $G$ is orthogonal. Then we call $G$ a **rotation** of $B$. 
+
+The idea of rotation is easier to see with the following diagram. Two conditions need to be satisfied: (a) The new axis (and the old one) should be orthogonal. (b) The difference in loadings on the factors by each variable must increase. In the diagram below we can see that the rotation has made the variables align better along the new axis system. 
+
+<img src="DSTMAA_images/FactorRotation.png" height=540 width=740>
+
+### Using the factor analysis function
+
+To illustrate, let's undertake a factor analysis of the Treasury rates data. In R, we can implement it generally with the **factanal** command.
+
+```{r}
+factanal(rates,2)
+```
+
+Notice how the first factor explains the shorter maturities better and the second factor explains the longer maturity rates. Hence, the two factors cover the range of maturities. 
+
+Note that the ability of the factors to separate the variables increases when we apply a **factor rotation**:
+
+```{r}
+factanal(rates,2,rotation="promax")
+```
+
+The factors have been reversed after the rotation. Now the first factor explains long rates and the second factor explains short rates. 
+
+If we want the time series of the factors, use the following command:
+
+```{r}
+result = factanal(rates,2,scores="regression")
+ts = result$scores
+par(mfrow=c(2,1))
+plot(ts[,1],type="l")
+plot(ts[,2],type="l")
+```
+
+```{r}
+result$scores
+```
+

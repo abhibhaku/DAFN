@@ -1,0 +1,728 @@
+---
+title: "MoRe: Data Handling and Other Useful Things"
+output: slidy_presentation
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r,echo=FALSE}
+options(warn = -1)
+```
+
+In this chapter, we will revisit some of the topics considered in the previous chapters, and demonstrate alternate programming approaches in R. There are some extremely powerful packages in R that allow sql-like operations on data sets, making for advanced data handling. One of the most time-consuming activities in data analytics is cleaning and arranging data, and here we will show examples of many tools available for that purpose. 
+Let's assume we have a good working knowledge of R by now. Here we revisit some more packages, functions, and data structures. 
+
+## Data Extraction of stocks using the *quantmod* package
+
+We have seen the package already in the previous chapter. Now, we proceed to use it to get some initial data. 
+
+```{r}
+library(quantmod)
+tickers = c("AAPL","MSFT","IBM","CSCO","C")
+getSymbols(tickers)
+getSymbols("^GSPC")
+tickers = c(tickers,"GSPC")
+```
+
+### Print the length of each stock series. 
+
+Are they all the same? Here we need to extract the ticker symbol without quotes.
+
+```{r}
+print(head(AAPL))
+length(tickers)
+```
+
+Now we can examine the number of observations in each ticker. 
+
+```{r}
+for (t in tickers) {
+  a = get(noquote(t))[,1]
+  print(c(t,length(a)))
+} 
+```
+
+We see that they are not all the same. The stock series are all the same length but the S\&P index is shorter by 7 days. 
+
+### Convert closing adjusted prices of all stocks into individual data.frames. 
+
+First, we create a **list** of data.frames. This will also illustrate how useful lists are because we store data.frames in lists. Notice how we also add a new column to each data.frame so that the dates column may later be used as an index to join the individual stock data.frames into one composite data.frame. 
+
+```{r}
+df = list()
+j = 0
+for (t in tickers) {
+  j = j + 1
+  a = noquote(t)
+  b = data.frame(get(a)[,6])
+  b$dt = row.names(b)
+  df[[j]] = b
+}
+```
+
+### Make a single data frame
+
+Second, we combine all the stocks adjusted closing prices into a single data.frame using a join, excluding all dates for which all stocks do not have data. The main function used here is *merge* which could be an intersect join or a union join. The default is the intersect join. 
+
+```{r}
+stock_table = df[[1]]
+for (j in 2:length(df)) {
+  stock_table = merge(stock_table,df[[j]],by="dt")
+}
+print(dim(stock_table))
+class(stock_table)
+```
+
+Note that the stock table contains the number of rows of the stock index, which had fewer observations than the individual stocks. So since this is an intersect join, some rows have been dropped. 
+
+### Plot the stock series
+
+Plot all stocks in a single data.frame using ggplot2, which is more advanced than the basic plot function. We use the basic plot function first. 
+
+```{r, fig.fullwidth=TRUE}
+par(mfrow=c(3,2))   #Set the plot area to six plots
+for (j in 1:length(tickers)) {
+  plot(as.Date(stock_table[,1]),stock_table[,j+1], type="l",
+       ylab=tickers[j],xlab="date")
+}
+par(mfrow=c(1,1))  #Set the plot figure back to a single plot
+```
+
+### Convert the data into returns 
+
+These are continuously compounded returns, or log returns. 
+
+```{r}
+n = length(stock_table[,1])
+rets = stock_table[,2:(length(tickers)+1)]
+for (j in 1:length(tickers)) {
+  rets[2:n,j] = diff(log(rets[,j]))
+}
+rets$dt = stock_table$dt
+rets = rets[2:n,]   #lose the first row when converting to returns
+print(head(rets))
+class(rets)
+```
+
+### Descriptive statistics
+
+The data.frame of returns can be used to present the descriptive statistics of returns.
+
+```{r}
+summary(rets)
+```
+
+## Correlation matrix 
+
+Now we compute the correlation matrix of returns. 
+
+```{r, fig.fullwidth=TRUE}
+cor(rets[,1:length(tickers)])
+```
+
+### Correlogram
+
+Show the correlogram for the six return series. This is a useful way to visualize the relationship between all variables in the data set. 
+
+```{r}
+library(corrgram)
+corrgram(rets[,1:length(tickers)], order=TRUE, lower.panel=panel.ellipse,
+ upper.panel=panel.pts, text.panel=panel.txt) 
+```
+
+### Market regression
+
+To see the relation between the stocks and the index, run a regression of each of the five stocks on the index returns.
+
+```{r}
+betas = NULL
+for (j in 1:(length(tickers)-1)) {
+  res = lm(rets[,j]~rets[,6])
+  betas[j] = res$coefficients[2]
+}
+print(betas)
+```
+
+The $\beta$s indicate the level of systematic risk for each stock. We notice that all the betas are positive, and highly significant. But they are not close to unity, in fact all are lower. This is evidence of misspecification that may arise from the fact that the stocks are in the tech sector and better explanatory power would come from an index that was more relevant to the technology sector. 
+
+### Return versus systematic risk
+
+In order to assess whether in the cross-section, there is a relation between average returns and the systematic risk or $\beta$ of a stock, run a regression of the five average returns on the five betas from the regression. 
+
+```{r}
+betas = matrix(betas)
+avgrets = colMeans(rets[,1:(length(tickers)-1)])
+res = lm(avgrets~betas)
+print(summary(res))
+plot(betas,avgrets)
+abline(res,col="red")
+```
+
+We see indeed, that there is an unexpected negative relation between $\beta$ and the return levels. This may be on account of the particular small sample we used for illustration here, however, we note that the CAPM (Capital Asset Pricing Model) dictate that we see a positive relation between stock returns and a firm's systematic risk level. 
+
+## Using the *merge* function
+
+Data frames a very much like spreadsheets or tables, but they are also a lot like databases. Some sort of happy medium. If you want to join two dataframes, it is the same a joining two databases. For this R has the **merge** function. It is best illustrated with an example. 
+
+### Extracting online corporate data 
+
+Suppose we have a list of ticker symbols and we want to generate a dataframe with more details on these tickers, especially their sector and the full name of the company. Let's look at the input list of tickers. Suppose I have them in a file called **tickers.csv** where the delimiter is the colon sign. We read this in as follows.
+
+```{r}
+tickers = read.table("DSTMAA_data/tickers.csv",header=FALSE,sep=":")
+```
+
+The line of code reads in the file and this gives us two columns of data. We can look at the top of the file (first 6 rows). 
+
+```{r}
+head(tickers)
+```
+
+Note that the ticker symbols relate to stocks from different exchanges, in this case Nasdaq and NYSE. The file may also contain AMEX listed stocks. 
+
+The second line of code below counts the number of input tickers, and the third line of code renames the columns of the dataframe. We need to call the column of ticker symbols as ``Symbol'' because we will see that the dataframe with which we will merge this one also has a column with the same name. This column becomes the index on which the two dataframes are matched and joined. 
+
+```{r}
+n = dim(tickers)[1]
+print(n)
+
+names(tickers) = c("Exchange","Symbol")
+head(tickers)
+```
+
+### Get all stock symbols from exchanges
+
+Next, we read in lists of all stocks on Nasdaq, NYSE, and AMEX as follows:
+
+```{r}
+library(quantmod) 
+nasdaq_names = stockSymbols(exchange="NASDAQ")
+nyse_names = stockSymbols(exchange="NYSE")
+amex_names = stockSymbols(exchange="AMEX")
+```
+
+We can look at the top of the Nasdaq file.
+
+```{r}
+head(nasdaq_names)
+```
+
+Next we merge all three dataframes for each of the exchanges into one data frame. 
+
+```{r}
+co_names = rbind(nyse_names,nasdaq_names,amex_names)
+```
+
+To see how many rows are there in this merged file, we check dimensions.
+
+```{r}
+dim(co_names)
+```
+
+Finally, use the merge function to combine the ticker symbols file with the exchanges data to extend the tickers file to include the information from the exchanges file. 
+
+```{r}
+result = merge(tickers,co_names,by="Symbol")
+head(result)
+```
+
+An alternate package to download stock tickers en masse is **BatchGetSymbols**. 
+
+## Using the DT package
+
+The Data Table package is a very good way to examine tabular data through an R-driven user interface. 
+
+```{r}
+library(DT)
+datatable(co_names, options = list(pageLength = 25))
+```
+
+
+
+## Web scraping
+
+Now suppose we want to find the CEOs of these 98 companies. There is no one file with compay CEO listings freely available for download. However, sites like Google Finance have a page for each stock and mention the CEOs name on the page. By writing R code to scrape the data off these pages one by one, we can extract these CEO names and augment the tickers dataframe. The code for this is simple in R. 
+
+```{r}
+library(stringr)
+
+#READ IN THE LIST OF TICKERS
+tickers = read.table("DSTMAA_data/tickers.csv",header=FALSE,sep=":")
+n = dim(tickers)[1]
+names(tickers) = c("Exchange","Symbol")
+tickers$ceo = NA
+
+#PULL CEO NAMES FROM GOOGLE FINANCE (take random 10 firms)
+for (j in 1:10) {
+  url = paste("https://finance.google.com/finance?q=",tickers[j,2],sep="")
+  text = readLines(url)
+  idx = grep("Chief Executive",text)
+  if (length(idx)>0) {
+    tickers[j,3] = str_split(text[idx-2],">")[[1]][2]
+  } 
+  else {
+    tickers[j,3] = NA
+  }
+  print(tickers[j,])
+} 
+
+#WRITE CEO_NAMES TO CSV
+write.table(tickers,file="DSTMAA_data/ceo_names.csv",
+            row.names=FALSE,sep=",")
+```
+
+The code uses the **stringr** package so that string handling is simplified. After extracting the page, we search for the line in which the words ``Chief Executive'' show up, and we note that the name of the CEO appears two lines before in the html page. A sample web page for Apple Inc is shown here: 
+
+
+![](DSTMAA_images/googlefinance_AAPL1.png)
+![](DSTMAA_images/googlefinance_AAPL2.png)
+
+The final dataframe with CEO names is shown here (the top 6 lines):
+
+```{r}
+head(tickers)
+```
+
+
+## Using the *apply* class of functions
+
+Sometimes we need to apply a function to many cases, and these case parameters may be supplied in a vector, matrix, or list. This is analogous to looping through a set of values to repeat evaluations of a function using different sets of parameters. We illustrate here by computing the mean returns of all stocks in our sample using the **apply** function. The first argument of the function is the data.frame to which it is being applied, the second argument is either 1 (by rows) or 2 (by columns). The third argument is the function being evaluated. 
+
+```{r}
+tickers = c("AAPL","YHOO","IBM","CSCO","C","GSPC")
+apply(rets[,1:(length(tickers)-1)],2,mean)
+```
+
+We see that the function returns the column means of the data set. The variants of the function pertain to what the loop is being applied to. The **lapply** is a function applied to a list, and **sapply** is for matrices and vectors. Likewise, **mapply** uses multiple arguments. 
+
+To cross check, we can simply use the **colMeans** function:
+```{r}
+colMeans(rets[,1:(length(tickers)-1)])
+```
+As we see, this result is verified. 
+
+
+
+## Getting interest rate data from FRED
+
+In finance, data on interest rates is widely used. An authoritative source of data on interest rates is FRED (Federal Reserve Economic Data), maintained by the St. Louis Federal Reserve Bank, and is warehoused at the following web site:  https://research.stlouisfed.org/fred2/. Let's assume that we want to download the data using R from FRED directly. To do this we need to write some custom code. There used to be a package for this but since the web site changed, it has been updated but does not work properly. Still, see that it is easy to roll your own code quite easily in R. 
+
+```{r}
+#FUNCTION TO READ IN CSV FILES FROM FRED
+#Enter SeriesID as a text string
+readFRED = function(SeriesID) {
+  url = paste("https://research.stlouisfed.org/fred2/series/",
+          SeriesID, "/downloaddata/",SeriesID,".csv",sep="")
+  data = readLines(url)
+  n = length(data)
+  data = data[2:n]
+  n = length(data)
+  df = matrix(0,n,2)   #top line is header
+  for (j in 1:n) {
+    tmp = strsplit(data[j],",")
+    df[j,1] = tmp[[1]][1]
+    df[j,2] = tmp[[1]][2]
+  }
+  rate = as.numeric(df[,2])
+  idx = which(rate>0)
+  idx = setdiff(seq(1,n),idx)
+  rate[idx] = -99
+  date = df[,1]
+  df = data.frame(date,rate)
+  names(df)[2] = SeriesID
+  result = df
+}
+```
+
+### Using the custom function
+
+Now, we provide a list of economic time series and download data accordingly using the function above. Note that we also join these individual series using the data as index. We download constant maturity interest rates (yields) starting from a maturity of one month (DGS1MO) to a maturity of thirty years (DGS30). 
+
+```{r}
+#EXTRACT TERM STRUCTURE DATA FOR ALL RATES FROM 1 MO to 30 YRS FROM FRED
+id_list = c("DGS1MO","DGS3MO","DGS6MO","DGS1","DGS2","DGS3",
+            "DGS5","DGS7","DGS10","DGS20","DGS30")
+k = 0
+for (id in id_list) {
+  out = readFRED(id)
+  if (k>0) { rates = merge(rates,out,"date",all=TRUE) }
+  else { rates = out }
+  k = k + 1
+}
+
+head(rates)
+```
+
+### Organize the data by date
+
+Having done this, we now have a data.frame called **rates** containing all the time series we are interested in. We now convert the dates into numeric strings and sort the data.frame by date. 
+
+```{r}
+#CONVERT ALL DATES TO NUMERIC AND SORT BY DATE
+dates = rates[,1]
+library(stringr)
+dates = as.numeric(str_replace_all(dates,"-",""))
+res = sort(dates,index.return=TRUE)
+for (j in 1:dim(rates)[2]) {
+  rates[,j] = rates[res$ix,j]
+}
+
+head(rates)
+```
+
+### Handling missing values
+
+Note that there are missing values, denoted by **NA**. Also there are rows with "-99" values and we can clean those out too but they represent periods when there was no yield available of that maturity, so we leave this in. 
+
+```{r}
+#REMOVE THE NA ROWS
+idx = which(rowSums(is.na(rates))==0)
+rates2 = rates[idx,]
+print(head(rates2))
+```
+
+
+## Cross-Sectional Data (an example)
+
+1. A great resource for data sets in corporate finance is on Aswath Damodaran's web site, see: 
+http://people.stern.nyu.edu/adamodar/New_Home_Page/data.html
+2. Financial statement data sets are available at: http://www.sec.gov/dera/data/financial-statement-data-sets.html
+3. And another comprehensive data source: 
+http://fisher.osu.edu/fin/fdf/osudata.htm
+4. Open government data: 
+https://www.data.gov/finance/
+
+Let's read in the list of failed banks: 
+http://www.fdic.gov/bank/individual/failed/banklist.csv
+
+```{r}
+#download.file(url="http://www.fdic.gov/bank/individual/
+#failed/banklist.csv",destfile="failed_banks.csv")
+```
+(This does not work, and has been an issue for a while.)
+
+### Access file from the web using the *readLines* function
+
+You can also read in the data using **readLines** but then further work is required to clean it up, but it works well in downloading the data. 
+
+```{r}
+url = "https://www.fdic.gov/bank/individual/failed/banklist.csv"
+data = readLines(url)
+head(data)
+```
+
+#### Or, read the file from disk
+
+It may be simpler to just download the data and read it in from the csv file: 
+```{r}
+data = read.csv("DSTMAA_data/banklist.csv",header=TRUE)
+print(names(data))
+```
+
+This gives a data.frame which is easy to work with. We will illustrate some interesting ways in which to manipulate this data. 
+
+### Failed banks by State
+
+Suppose we want to get subtotals of how many banks failed by state. First add a column of ones to the data.frame. 
+
+```{r}
+print(head(data))
+data$count = 1
+print(head(data))
+```
+
+#### Check for missing data
+
+It's good to check that there is no missing data.
+```{r}
+any(is.na(data))
+```
+
+#### Sort by State
+
+Now we sort the data by state to see how many there are. 
+```{r}
+res = sort(as.matrix(data$ST),index.return=TRUE)
+print(head(data[res$ix,]))
+print(head(sort(unique(data$ST))))
+print(length(unique(data$ST)))
+```
+
+### Use the *aggregate* function (for subtotals)
+
+We can directly use the **aggregate** function to get subtotals by state. 
+
+```{r}
+head(aggregate(count ~ ST,data,sum),10)
+```
+
+#### Data by acquiring bank
+
+And another example, subtotal by acquiring bank. Note how we take the subtotals into another data.frame, which is then sorted and returned in order using the index of the sort. 
+
+```{r}
+acq = aggregate(count~Acquiring.Institution,data,sum)
+idx = sort(as.matrix(acq$count),decreasing=TRUE,index.return=TRUE)$ix
+head(acq[idx,],15)
+```
+
+
+## Handling dates with *lubridate*
+
+Suppose we want to take the preceding data.frame of failed banks and aggregate the data by year, or month, etc. In this case, it us useful to use a dates package. Another useful tool developed by Hadley Wickham is the **lubridate** package. 
+
+```{r}
+head(data)
+
+library(lubridate)
+data$Cdate = dmy(data$Closing.Date)
+data$Cyear = year(data$Cdate)
+fd = aggregate(count~Cyear,data,sum)
+print(fd)
+
+plot(count~Cyear,data=fd,type="l",lwd=3,col="red",xlab="Year")
+grid(lwd=3)
+```
+
+### By Month
+
+Let's do the same thing by month to see if there is seasonality
+```{r}
+data$Cmonth = month(data$Cdate)
+fd = aggregate(count~Cmonth,data,sum)
+print(fd)
+
+plot(count~Cmonth,data=fd,type="l",lwd=3,col="green"); grid(lwd=3)
+```
+
+### By Day
+
+There does not appear to be any seasonality. What about day? 
+
+```{r}
+data$Cday = day(data$Cdate)
+fd = aggregate(count~Cday,data,sum)
+print(fd)
+
+plot(count~Cday,data=fd,type="l",lwd=3,col="blue"); grid(lwd=3)
+```
+
+Definitely, counts are lower at the start and end of the month! 
+
+## Using the *data.table* package
+
+This is an incredibly useful package that was written by Matt Dowle. It essentially allows your data.frame to operate as a database. It enables very fast handling of massive quantities of data, and much of this technology is now embedded in the IP of the company called h2o: http://h2o.ai/
+
+The data.table cheat sheet is here: https://s3.amazonaws.com/assets.datacamp.com/img/blog/data+table+cheat+sheet.pdf
+
+### California Crime Statistics
+
+We start with some freely downloadable crime data statistics for California. We placed the data in a csv file which is then easy to read in to R. 
+
+```{r}
+data = read.csv("DSTMAA_data/CA_Crimes_Data_2004-2013.csv",header=TRUE)
+```
+
+It is easy to convert this into a data.table. 
+```{r}
+library(data.table)
+D_T = as.data.table(data)
+print(class(D_T))   
+```
+Note, it is still a **data.frame** also. Hence, it inherits its properties from the **data.frame** class. 
+
+### Examine the *data.table*
+
+Let's see how it works, noting that the syntax is similar to that for data.frames as much as possible.  We print only a part of the names list. And do not go through each and everyone. 
+
+```{r}
+print(dim(D_T))
+print(names(D_T))
+head(D_T)
+```
+
+### Indexing the *data.table*
+
+A nice feature of the data.table is that it can be indexed, i.e., resorted on the fly by making any column in the database the key. Once that is done, then it becomes easy to compute subtotals, and generate plots from these subtotals as well. 
+
+The data table can be used like a database, and you can directly apply summarization functions to it. Essentially, it is governed by a format that is summarized as ($i$,$j$,by), i.e., apply some rule to rows $i$, then to some columns $j$, and one may also group by some columns. We can see how this works with the following example. 
+
+```{r}
+setkey(D_T,Year)
+
+crime = 6
+res = D_T[,sum(ForRape_sum),by=Year]
+print(res)
+class(res)
+```
+
+The data table was operated on for all columns, i.e., all $i$, and the $j$ column we are interested in was the "ForRape_sum" which we want to total by Year. This returns a summary of only the Year and the total number of rapes per year. See that the type of output is also of the type data.table, which includes the class data.frame also. 
+
+### Plotting from the *data.table*
+
+Next, we plot the results from the **data.table** in the same way as we would for a **data.frame**. 
+
+```{r}
+plot(res$Year,res$V1,type="b",lwd=3,col="blue",
+	xlab="Year",ylab="Forced Rape")
+```
+
+#### By County
+
+Repeat the process looking at crime (Rape) totals by county. 
+
+```{r}
+setkey(D_T,County)
+res = D_T[,sum(ForRape_sum),by=County]
+print(res)
+setnames(res,"V1","Rapes")
+
+County_Rapes = as.data.table(res)  #This is not really needed
+setkey(County_Rapes,Rapes)
+print(County_Rapes)
+```
+
+#### Barplot of crime
+
+Now, we can go ahead and plot it using a different kind of plot, a horizontal barplot. 
+
+```{r, fig.fullwidth=TRUE}
+par(las=2)  #makes label horizontal
+#par(mar=c(3,4,2,1))  #increase y-axis margins
+barplot(County_Rapes$Rapes, names.arg=County_Rapes$County, 
+horiz=TRUE, cex.names=0.4, col=8)
+```
+
+
+### Bay Area Bike Share data
+
+We show some other features using a different data set, the bike information on Silicon Valley routes for the Bike Share program. This is a much larger data set. 
+
+```{r}
+trips = read.csv("DSTMAA_data/201408_trip_data.csv",header=TRUE)
+print(names(trips))
+```
+
+#### Summarize Trips Data
+
+Next we print some descriptive statistics. 
+```{r}
+print(length(trips$Trip.ID))
+print(summary(trips$Duration/60))
+print(mean(trips$Duration/60,trim=0.01))
+```
+
+#### Start and End Bike Stations
+
+Now, we quickly check how many start and end stations there are. 
+```{r}
+start_stn = unique(trips$Start.Terminal)
+print(sort(start_stn))
+print(length(start_stn))
+```
+
+```{r}
+end_stn = unique(trips$End.Terminal)
+print(sort(end_stn))
+print(length(end_stn))
+```
+
+As we can see, there are quite a few stations in the bike share program where riders can pick up and drop off bikes. The trip duration information is stored in seconds, so has been converted to minutes in the code above. 
+
+## The *plyr* package family
+
+This package by Hadley Wickham is useful for applying functions to tables of data, i.e., data.frames. Since we may want to write custom functions, this is a highly useful package. R users often select either the **data.table** or the **plyr** class of packages for handling data.frames as databases. The latest incarnation is the **dplyr** package, which focuses only on data.frames. 
+
+```{r}
+require(plyr)
+library(dplyr)
+```
+
+### Filter the data
+
+One of the useful things you can use is the **filter** function, to subset the rows of the dataset you might want to select for further analysis.
+```{r}
+res = filter(trips,Start.Terminal==50,End.Terminal==51)
+head(res)
+```
+
+### Sorting using the *arrange* function
+
+The **arrange** function is useful for sorting by any number of columns as needed. Here we sort by the start and end stations. 
+
+```{r}
+trips_sorted = arrange(trips,Start.Station,End.Station)
+head(trips_sorted)
+```
+
+### Reverse order sort
+
+The sort can also be done in reverse order as follows. 
+```{r}
+trips_sorted = arrange(trips,desc(Start.Station),End.Station)
+head(trips_sorted)
+```
+
+### Descriptive statistics
+
+Data.table also offers a fantastic way to do descriptive statistics! First, group the data by start point, and then produce statistics by this group, choosing to count the number of trips starting from each station and the average duration of each trip. 
+
+```{r}
+byStartStation = group_by(trips,Start.Station)
+res = summarise(byStartStation, count=n(), time=mean(Duration)/60)
+print(res)
+```
+
+### Other functions in *dplyr*
+
+Try also the **select()**, **extract()**, **mutate()**, **summarise()**, **sample_n()**, **sample_frac()** functions. 
+
+The **group_by()** function is particularly useful as we have seen.
+
+## Application to IPO Data
+
+Let's revisit all the stock exchange data from before, where we download the table of firms listed on the NYSE, NASDAQ, and AMEX using the *quantmod* package.
+
+```{r}
+library(quantmod)
+nasdaq_names = stockSymbols(exchange = "NASDAQ")
+nyse_names = stockSymbols(exchange = "NYSE")
+amex_names = stockSymbols(exchange = "AMEX")
+tickers = rbind(nasdaq_names,nyse_names,amex_names)
+tickers$Count = 1
+print(dim(tickers))
+```
+
+We then clean off the rows with incomplete data, using the very useful **complete.cases** function. 
+
+```{r}
+idx = complete.cases(tickers)
+df = tickers[idx,]
+print(nrow(df))
+```
+
+We create a table of the frequency of IPOs by year to see hot and cold IPO markets. 
+1. First, remove all rows with missing IPO data.
+2. Plot IPO Activity with a bar plot. We make sure to label the axes properly. 
+3. Plot IPO Activity using the **rbokeh** package to make a pretty line plot. See: https://hafen.github.io/rbokeh/
+
+```{r}
+library(dplyr)
+library(magrittr)
+
+idx = which(!is.na(tickers$IPOyear))
+df = tickers[idx,]
+res = df %>% group_by(IPOyear) %>% summarise(numIPO = sum(Count))
+print(res)
+barplot(res$numIPO,names.arg = res$IPOyear)
+```
+
+## Bokeh plots
+
+These are really nice looking but requires simple code. The "hover"" features make these plots especially appealing. 
+
+```{r}
+library(rbokeh)
+p = figure(width=500,height=300) %>% ly_points(IPOyear,numIPO,data=res,hover=c(IPOyear,numIPO)) %>% ly_lines(IPOyear,numIPO,data=res)
+p 
+```
